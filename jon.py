@@ -6,10 +6,10 @@ def go():
   post_ids = set()
   data = {}
 
-  with open("./ct_data.json") as f:
+  with open("/home/luke/bfd/ct_data_100.json") as f:
     line = f.readline()
     i = 0
-    while line and i < 500:
+    while line:
       print(i)
       i += 1
       try:
@@ -52,7 +52,7 @@ def go():
             rxn_date = datetime.datetime.strptime(rxn["date"], "%Y-%m-%d %H:%M:%S")
             rxn_count = 0
             for rxn_kind in rxn['actual']:
-              rxn_count += 1
+              rxn_count += int(rxn['actual'][rxn_kind])
             data[eid]['rxns'].append((rxn_date, rxn_count))
 
           day = math.floor((post_date - first_post_date).total_seconds() / 86400)
@@ -75,7 +75,7 @@ def go():
         data[eid]["tpfc_rating"] = tpfc_rating
       line = f.readline()
 
-  f = open("results_rxns_dummy.tsv", "a+")
+  f = open("/home/luke/bfd/results_rxns_100.tsv", "a+")
   line_to_write = f'eid\tday\tshares\treactions\tfact_check_rating\tfact_check_time\tdomain\turl\tcountry\n'
   f.write(line_to_write)
   for eid in data:
