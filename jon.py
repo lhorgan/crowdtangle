@@ -5,11 +5,16 @@ import os
 
 def process_line(line):
   result = {}
+  glitch = False
 
-  obj = json.loads(line)
+  try:
+    obj = json.loads(line)
+  except:
+    print("Woops")
+    return (False, False)
   url = obj["clean_url"]
   eid = obj["url_rid"]
-  print("OBSERVING " + obj["url_rid"])
+  #print("OBSERVING " + obj["url_rid"])
   first_observed_post_date = datetime.datetime.max
   fact_check_rating = obj["tpfc_rating"]
   fact_check_time = datetime.datetime.strptime(obj["tpfc_first_fact_check"], "%Y-%m-%dT%H:%M:%S.000Z")
@@ -17,8 +22,12 @@ def process_line(line):
     first_post_date = datetime.datetime.strptime(obj["first_post_time"], "%Y-%m-%dT%H:%M:%S.000Z")
   else:
     first_post_date = None
+  
+  if "ct_response" not in obj or obj["ct_response"] is None:
+    print("No ct response for %s" % eid)
+    return (False, False)
   if not "result" in obj["ct_response"]:
-    return False
+    return (False, False)
   
   posts = obj["ct_response"]["result"]["posts"]
   domain = obj["full_domain"]
@@ -44,6 +53,9 @@ def process_line(line):
       new_posts.append(post)
   posts = new_posts
 
+  if len(posts) == 100:
+    glitch = True
+
   for post in posts:
     result['fact_check_time'] = fact_check_time
     post_date = datetime.datetime.strptime(post["date"], "%Y-%m-%d %H:%M:%S")
@@ -64,7 +76,7 @@ def process_line(line):
   result["first_post_time"] = first_post_date
   result["first_observed_post_time"] = first_observed_post_date
 
-  return result
+  return (result, glitch)
 
 def write_result(result, f):
   rxn_types = ['sadCount', 'wowCount', 'careCount', 'hahaCount', 'likeCount', 'loveCount', 'angryCount', 'shareCount', 'commentCount', 'thankfulCount']
@@ -109,7 +121,10 @@ def write_result(result, f):
       line_to_write = f'{result["eid"]}\t{day}\t{shares}\t{rxns}\t{result["tpfc_rating"]}\t{time_to_fact_check}\t{result["domain"]}\t{result["url"]}\t{result["country"]}\t{result["first_post_time"]}\t{result["first_observed_post_time"]}'
       #line_to_write = f'{eid}\t{day}\t{shares}\t{rxns}\t{result["tpfc_rating"]}\t'
       for rxn_type in rxn_types:
+        print(rxns_breakdown)
         if rxn_type in rxns_breakdown:
+          if rxn_type == "thankfulCount" and rxns_breakdown[rxn_type] > 0:
+            print(f"{rxn_type} {rxns_breakdown[rxn_type]}")
           line_to_write += (f"{int(rxns_breakdown[rxn_type])}\t")
         else:
           #print("We haven't got " + rxn_type)
@@ -118,12 +133,13 @@ def write_result(result, f):
       f.write(line_to_write)
 
 def go():
-  post_ids = set()
   data = {}
-  glitches = 0
+  rxn_types = ['sadCount', 'wowCount', 'careCount', 'hahaCount', 'likeCount', 'loveCount', 'angryCount', 'shareCount', 'commentCount', 'thankfulCount']
+
 
   try:
     os.remove("./results_test.tsv")
+    print("REMOVED!")
   except:
     pass
 
@@ -138,18 +154,43 @@ def go():
         data[eid]["tpfc_rating"] = tpfc_rating
       line = f.readline()
 
+  processed_eids = set()
+  glitches = []
   with open("/home/luke/bfd/ct_data_100.json") as f:
     line = f.readline()
     i = 0
-    glithces = 0
     with open("results_test.tsv", "a+") as results_file:
-      while line and i < float("inf"):
+      line_to_write = f'eid\tday\tshares\treactions\tfact_check_rating\tfact_check_time\tdomain\turl\tcountry\tfirst_post_time\tfirst_observed_post_time\t'
+      for rxn_type in rxn_types:
+        line_to_write += f"{rxn_type}\t"
+      line_to_write += "\n"
+      results_file.write(line_to_write)
+
+      while line and i < 1: #float("inf"):
+        print(i)
         i += 1
-        result = process_line(line)
-        write_result(result, results_file)
+        result, glitch = process_line(line)
+        if glitch:
+          glitches.append((result["eid"], i))
+        if result:
+          #print("\n\n")
+          processed_eids.add(eid)
+          write_result(result, results_file)
         line = f.readline()
-        # print(f"{first_post_date}\t{first_observed_post_date}")
-        # data[eid]["first_osbserved_post_time"] = first_observed_post_date
+  
+  for glitch in glitches:
+    print(glitch)
+
+  with open("./ct_data.json") as f:
+    line = f.readline()
+    i = 0
+    with open("results_test.tsv", "a+") as results_file:
+      while line and i < 0:#float("inf"):
+        i += 1
+        result, glitch = process_line(line)
+        if result:
+          if result["eid"] not in processed_eids:
+            write_result(result, results_file)
+        line = f.readline()
 
 go()
-
